@@ -2,7 +2,7 @@
 .SYNOPSIS
     TJprojMain_Remove_v2025 - Công cụ loại bỏ Malware TJprojMain / W32.Jeefo (Phiên bản 2025)
     Author: Nguyen Quoc Anh ( NQA TECH)
-    Version: 2025.1.4 (PowerShell Edition + Verbose Scanning)
+    Version: 2025.1.5 (PowerShell Edition + Custom Messages)
 
 .DESCRIPTION
     Phiên bản này tích hợp hệ thống Logging và Hiển thị chi tiết quá trình quét (Verbose) lên màn hình console.
@@ -26,6 +26,9 @@ $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 if (-not $ScriptPath) { $ScriptPath = Get-Location } 
 $LogTimeTag = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogFile = Join-Path -Path $ScriptPath -ChildPath "ScanLog_$LogTimeTag.txt"
+
+# Biến toàn cục để theo dõi trạng thái nhiễm virus
+$global:VirusDetected = $false
 
 # Hàm ghi log: Vừa hiện lên màn hình, vừa ghi vào file
 function Write-Log {
@@ -108,6 +111,7 @@ function Clear-Registry {
                 if ($data -is [string]) {
                     foreach ($sig in $MalwareSignatures) {
                         if ($data -like "*$sig*") {
+                            $global:VirusDetected = $true
                             Write-Log "   [REG] Phat hien Key doc hai: $name -> $data" -Color Red
                             Remove-ItemProperty -Path $key -Name $name -Force
                             Write-Log "         -> Da xoa Registry Key." -Color Green
@@ -134,6 +138,7 @@ function Invoke-DriveScan {
             Write-Host "   [?] Dang kiem tra: $fullPath" -ForegroundColor DarkGray
             
             if (Test-Path -Path $fullPath) {
+                $global:VirusDetected = $true
                 Write-Host "" # Xuống dòng để làm nổi bật cảnh báo
                 Write-Log "   [FILE] Phat hien: $fullPath" -Color Red
                 
@@ -151,7 +156,8 @@ function Invoke-DriveScan {
                 # 3. Xóa file
                 try {
                     Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
-                    Write-Log "         -> [OK] DA XOA THANH CONG." -Color Green
+                    # [CUSTOM MESSAGE] Thông báo theo yêu cầu của người dùng
+                    Write-Log "         -> Oh thay virus ne ! Da xoa virus: $fullPath" -Color Yellow
                 } catch {
                     Write-Log "         -> [FAILED] Khong the xoa file." -Color Magenta
                     Write-Log "            Error: $($_.Exception.Message)" -Color DarkGray
@@ -178,6 +184,14 @@ Write-Log ""
 Write-Log "========================================================" -Color Cyan
 Write-Log "   HOAN TAT QUET VA XU LY" -Color White
 Write-Log "   Thoi gian thuc thi: $($duration.TotalSeconds) giay" -Color Gray
+
+# [CUSTOM MESSAGE] Kiểm tra kết quả cuối cùng
+if (-not $global:VirusDetected) {
+    Write-Log "   [SAFE] May cua ban khong bi nhiem virus." -Color Green
+} else {
+    Write-Log "   [DONE] Da xu ly xong cac moi nguy hiem tren may." -Color Yellow
+}
+
 Write-Log "   File log da duoc luu tai: $LogFile" -Color Yellow
 Write-Log "========================================================" -Color Cyan
 Write-Host "Nhan Enter de thoat..."
