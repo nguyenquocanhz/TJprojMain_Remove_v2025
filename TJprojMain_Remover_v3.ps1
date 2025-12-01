@@ -1,41 +1,64 @@
 <#
 .SYNOPSIS
-    Advanced Malware Removal Tool for TJprojMain / W32.Jeefo variants
+    TJprojMain_Remove_v2025 - Công cụ loại bỏ Malware TJprojMain / W32.Jeefo (Phiên bản 2025)
     Author: Nguyen Quoc Anh ( NQA TECH)
-    Version: 3.0 (PowerShell Edition)
+    Version: 2025.1.4 (PowerShell Edition + Verbose Scanning)
 
 .DESCRIPTION
-    Script này thực hiện các tác vụ chuyên sâu:
-    1. Buộc dừng tiến trình độc hại dựa trên ĐƯỜNG DẪN TUYỆT ĐỐI (tránh kill nhầm svchost thật).
-    2. Gỡ bỏ thuộc tính Hidden/System/ReadOnly.
-    3. Xóa file vĩnh viễn (Force).
-    4. [MỚI] Quét và làm sạch Registry (Startup keys) trỏ tới các file này.
-    5. Tự động quét tất cả ổ đĩa (Fixed + Removable).
+    Phiên bản này tích hợp hệ thống Logging và Hiển thị chi tiết quá trình quét (Verbose) lên màn hình console.
+    File log sẽ được lưu tại cùng thư mục với script.
 
 .NOTES
-    Yêu cầu quyền Administrator.
+    - Yêu cầu quyền: Administrator.
+    - Log file format: ScanLog_yyyyMMdd_HHmmss.txt
 #>
 
 # --- 1. TỰ ĐỘNG KIỂM TRA & YÊU CẦU QUYỀN ADMIN ---
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Warning "Script can quyen Administrator de can thiep he thong."
-    Write-Host "Dang khoi dong lai voi quyen Admin..." -ForegroundColor Yellow
     Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     Exit
 }
 
-# --- CẤU HÌNH GIAO DIỆN ---
-$Host.UI.RawUI.WindowTitle = "TJprojMain Advanced Remover (PowerShell v3.0)"
-Clear-Host
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "   ADVANCED MALWARE REMOVAL TOOL (PowerShell Core)      " -ForegroundColor Cyan
-Write-Host "   Target: TJprojMain / Fake System Files               " -ForegroundColor Gray
-Write-Host "   Engine: .NET/CIM (No WMIC dependency)                " -ForegroundColor Gray
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host ""
+# --- 2. THIẾT LẬP HỆ THỐNG LOGGING ---
+$ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
+if (-not $ScriptPath) { $ScriptPath = Get-Location } 
+$LogTimeTag = Get-Date -Format "yyyyMMdd_HHmmss"
+$LogFile = Join-Path -Path $ScriptPath -ChildPath "ScanLog_$LogTimeTag.txt"
 
-# --- DANH SÁCH MỤC TIÊU (RELATIVE PATHS) ---
+# Hàm ghi log: Vừa hiện lên màn hình, vừa ghi vào file
+function Write-Log {
+    param(
+        [string]$Message,
+        [ConsoleColor]$Color = "White",
+        [switch]$NoNewline
+    )
+
+    # 1. Hiển thị lên màn hình (Console)
+    if ($NoNewline) {
+        Write-Host $Message -ForegroundColor $Color -NoNewline
+    } else {
+        Write-Host $Message -ForegroundColor $Color
+    }
+
+    # 2. Ghi vào file (Strip color, add timestamp)
+    $TimeStr = Get-Date -Format "HH:mm:ss"
+    $LogContent = "[$TimeStr] $Message"
+    $LogContent | Out-File -FilePath $LogFile -Append -Encoding UTF8
+}
+
+# --- CẤU HÌNH GIAO DIỆN ---
+$Host.UI.RawUI.WindowTitle = "TJprojMain_Remove_v2025 (Logging Enabled)"
+Clear-Host
+Write-Log "========================================================" -Color Cyan
+Write-Log "   TJprojMain_Remove_v2025 (Advanced Removal Tool)      " -Color Cyan
+Write-Log "   Author: Nguyen Quoc Anh ( NQA TECH)                  " -Color Yellow
+Write-Log "   Log File: $LogFile                                   " -Color Gray
+Write-Log "========================================================" -Color Cyan
+Write-Log ""
+
+# --- DANH SÁCH MỤC TIÊU ---
 $MalwareSignatures = @(
     "\Windows\Resources\svchost.exe",
     "\Windows\Resources\spoolsv.exe",
@@ -47,31 +70,30 @@ $MalwareSignatures = @(
     "\Windows\System\icsys.icn.exe"
 )
 
-# --- HÀM 1: TIÊU DIỆT TIẾN TRÌNH THEO ĐƯỜNG DẪN ---
+# --- HÀM 1: TIÊU DIỆT TIẾN TRÌNH ---
 function Stop-MaliciousProcess {
     param([string]$FilePath)
     
-    # Lấy tất cả process, lọc ra process có đường dẫn trùng khớp
-    # Sử dụng Get-CimInstance thay vì Get-Process để lấy Path chính xác hơn
     try {
         $processes = Get-CimInstance Win32_Process -Filter "ExecutablePath = '$(($FilePath -replace '\\','\\'))'" -ErrorAction SilentlyContinue
         
         foreach ($proc in $processes) {
-            Write-Host "   [!!!] PHAT HIEN TIEN TRINH DANG CHAY: " -NoNewline -ForegroundColor Red
-            Write-Host $proc.Name -ForegroundColor Yellow
+            Write-Host "`n" # Xuống dòng để tránh bị ghi đè lên dòng Checking
+            Write-Log "   [!!!] PHAT HIEN TIEN TRINH DANG CHAY: " -Color Red -NoNewline
+            Write-Log "$($proc.Name) (PID: $($proc.ProcessId))" -Color Yellow
             
             Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
-            Write-Host "         -> Da buoc dung (PID: $($proc.ProcessId))" -ForegroundColor Green
+            Write-Log "         -> Da buoc dung process." -Color Green
         }
     }
     catch {
-        Write-Warning "Khong the kiem tra process cho: $FilePath"
+        Write-Log "   [WARN] Khong the kiem tra process cho: $FilePath" -Color Magenta
     }
 }
 
-# --- HÀM 2: QUÉT REGISTRY (TÍNH NĂNG MỚI) ---
+# --- HÀM 2: QUÉT REGISTRY ---
 function Clear-Registry {
-    Write-Host "[*] Dang quet Registry (Startup Keys)..." -ForegroundColor Cyan
+    Write-Log "[*] Dang quet Registry (Startup Keys)..." -Color Cyan
     
     $RegKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
@@ -84,12 +106,11 @@ function Clear-Registry {
             foreach ($name in $values.PSObject.Properties.Name) {
                 $data = $values.$name
                 if ($data -is [string]) {
-                    # Kiểm tra xem value trong Registry có chứa đường dẫn độc hại không
                     foreach ($sig in $MalwareSignatures) {
                         if ($data -like "*$sig*") {
-                            Write-Host "   [REG] Phat hien Key doc hai: $name -> $data" -ForegroundColor Red
+                            Write-Log "   [REG] Phat hien Key doc hai: $name -> $data" -Color Red
                             Remove-ItemProperty -Path $key -Name $name -Force
-                            Write-Host "         -> Da xoa Registry Key." -ForegroundColor Green
+                            Write-Log "         -> Da xoa Registry Key." -Color Green
                         }
                     }
                 }
@@ -99,38 +120,41 @@ function Clear-Registry {
 }
 
 # --- HÀM 3: XỬ LÝ FILE TRÊN Ổ ĐĨA ---
-function InVoke-ScanDrives {
-    # Lấy danh sách ổ đĩa (Fixed và Removable)
+function Invoke-DriveScan {
     $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 }
 
     foreach ($drive in $drives) {
-        $root = $drive.Root # Ví dụ C:\ hoặc D:\
-        Write-Host "[-] Dang quet o dia: $root" -ForegroundColor Gray
+        $root = $drive.Root 
+        Write-Log "[-] Dang quet o dia: $root" -Color Gray
 
         foreach ($sig in $MalwareSignatures) {
             $fullPath = Join-Path -Path $root -ChildPath $sig
             
+            # [UPDATE] In ra màn hình file đang kiểm tra (Chỉ hiện console, không ghi vào log để tránh spam file log)
+            Write-Host "   [?] Dang kiem tra: $fullPath" -ForegroundColor DarkGray
+            
             if (Test-Path -Path $fullPath) {
-                Write-Host "   [FILE] Phat hien: $fullPath" -ForegroundColor Red
+                Write-Host "" # Xuống dòng để làm nổi bật cảnh báo
+                Write-Log "   [FILE] Phat hien: $fullPath" -Color Red
                 
                 # 1. Kill Process
                 Stop-MaliciousProcess -FilePath $fullPath
 
-                # 2. Gỡ bỏ Attributes (Hidden, System, ReadOnly)
+                # 2. Gỡ bỏ Attributes
                 try {
                     $item = Get-Item -LiteralPath $fullPath -Force
                     $item.Attributes = "Normal"
                 } catch {
-                    Write-Host "         -> Loi khi go thuoc tinh (Co the file dang bi khoa)" -ForegroundColor DarkRed
+                    Write-Log "         -> Loi khi go thuoc tinh (File bi khoa/quyen he thong)" -Color DarkRed
                 }
 
                 # 3. Xóa file
                 try {
                     Remove-Item -LiteralPath $fullPath -Force -ErrorAction Stop
-                    Write-Host "         -> [OK] DA XOA THANH CONG." -ForegroundColor Green
+                    Write-Log "         -> [OK] DA XOA THANH CONG." -Color Green
                 } catch {
-                    Write-Host "         -> [FAILED] Khong the xoa file. Thu khoi dong lai may va quet lai." -ForegroundColor Magenta
-                    Write-Host "            Error: $($_.Exception.Message)" -ForegroundColor DarkGray
+                    Write-Log "         -> [FAILED] Khong the xoa file." -Color Magenta
+                    Write-Log "            Error: $($_.Exception.Message)" -Color DarkGray
                 }
             }
         }
@@ -139,20 +163,22 @@ function InVoke-ScanDrives {
 
 # --- THỰC THI CHÍNH ---
 $timeStart = Get-Date
+Write-Log "Bat dau quet vao luc: $($timeStart.ToString())" -Color White
 
-# 1. Quét Registry trước để chặn tự khởi động lại
-Clean-Registry
+# 1. Quét Registry
+Clear-Registry
 
-# 2. Quét File và Process
-Scan-Drives
+# 2. Quét File
+Invoke-DriveScan
 
 $timeEnd = Get-Date
 $duration = $timeEnd - $timeStart
 
-Write-Host ""
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "   HOAN TAT QUET VA XU LY" -ForegroundColor White
-Write-Host "   Thoi gian thuc thi: $($duration.TotalSeconds) giay" -ForegroundColor Gray
-Write-Host "========================================================" -ForegroundColor Cyan
+Write-Log ""
+Write-Log "========================================================" -Color Cyan
+Write-Log "   HOAN TAT QUET VA XU LY" -Color White
+Write-Log "   Thoi gian thuc thi: $($duration.TotalSeconds) giay" -Color Gray
+Write-Log "   File log da duoc luu tai: $LogFile" -Color Yellow
+Write-Log "========================================================" -Color Cyan
 Write-Host "Nhan Enter de thoat..."
 Read-Host
