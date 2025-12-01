@@ -1,0 +1,18 @@
+﻿[20:07:55] ========================================================
+[20:07:56]    TJprojMain_Remove_v2025 (Advanced Removal Tool)      
+[20:07:56]    Author: Nguyen Quoc Anh ( NQA TECH)                  
+[20:07:56]    Log File: D:\TJprojMain_RemoveTool\ScanLog_20251201_200755.txt                                   
+[20:07:56] ========================================================
+[20:07:56] 
+[20:07:56] Bat dau quet vao luc: 01/12/2025 20:07:56
+[20:07:56] [*] Dang quet Registry (Startup Keys)...
+[20:07:56] [-] Dang quet o dia: C:\
+[20:07:56] [-] Dang quet o dia: D:\
+[20:07:56] [-] Dang quet o dia: E:\
+[20:07:56] 
+[20:07:56] ========================================================
+[20:07:56]    HOAN TAT QUET VA XU LY
+[20:07:56]    Thoi gian thuc thi: 0.4232352 giay
+[20:07:56]    [SAFE] May cua ban khong bi nhiem virus.
+[20:07:56]    File log da duoc luu tai: D:\TJprojMain_RemoveTool\ScanLog_20251201_200755.txt
+[20:07:56] ========================================================
